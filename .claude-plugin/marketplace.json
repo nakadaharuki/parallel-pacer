@@ -3,6 +3,6 @@
   "owner": { "name": "nakadadev" },
   "metadata": { "description": "Claude Code の会話を何本も並べる人のための Mod" },
   "plugins": [
-    { "name": "parallel-pacer", "source": "./", "description": "PC の CPU・メモリと並列の会話数を見て、重い処理の同時実行を自動で絞り、あと何本並列できるかを出す", "version": "0.1.0" }
+    { "name": "parallel-pacer", "source": "./", "description": "PC の CPU・メモリと並列の会話数を見て、重い処理の同時実行を自動で絞り、あと何本並列できるかを出す", "version": "0.1.1" }
   ]
 }

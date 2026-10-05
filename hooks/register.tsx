@@ -138,7 +138,7 @@ async function gate($: any, e: any, next: any) {
     }
   }
   const key = `h:${sid}:${e.tool_use_id ?? at}`
-  await $.store.set(key, { at, cmd: cmd.slice(0, 80) })
+  await $.store.set(key, { at, cmd: HEAVY.exec(cmd)?.[0] ?? '' } /* the kind of command only: arguments may carry secrets */)
   try {
     return await next(e)
   } finally {
