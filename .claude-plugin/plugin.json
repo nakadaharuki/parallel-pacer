@@ -1,0 +1,6 @@
+{
+  "name": "parallel-pacer",
+  "version": "0.1.0",
+  "description": "PC の CPU・メモリと並列の会話数を見て、重い処理の同時実行を自動で絞り、あと何本並列できるかを出す",
+  "author": { "name": "nakadadev" }
+}
