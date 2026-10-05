@@ -42,6 +42,8 @@ Mod はセッションの数だけ別のプロセスで動きます。なので�
 
 ## 関連
 
+成分表（何に触れるか）と、版を固定した入れ方は [modscode.com/mods/parallel-pacer](https://modscode.com/mods/parallel-pacer/) にあります。
+
 デスクトップ版の Mods で踏んだ罠は Zenn に書いています: https://zenn.dev/nakadaharuki
 
 MIT License
