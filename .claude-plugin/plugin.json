@@ -1,6 +1,21 @@
 {
   "name": "parallel-pacer",
-  "version": "0.1.1",
-  "description": "PC の CPU・メモリと並列の会話数を見て、重い処理の同時実行を自動で絞り、あと何本並列できるかを出す",
-  "author": { "name": "nakadadev" }
+  "version": "0.2.0",
+  "description": "Watches this PC's CPU, free memory and parallel chats, holds heavy commands back to one at a time when it is choked, and shows how many more chats fit. English and Japanese",
+  "author": {
+    "name": "nakadadev"
+  },
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Language of the status line, the toasts and the messages; auto follows Claude Code's language setting (Japanese when it names Japanese, English otherwise)",
+      "options": [
+        "auto",
+        "en",
+        "ja"
+      ],
+      "default": "auto"
+    }
+  }
 }

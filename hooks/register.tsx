@@ -32,6 +32,65 @@ const SAMPLE = [
   '$o=Get-CimInstance Win32_OperatingSystem;$c=(Get-CimInstance Win32_Processor|Measure-Object LoadPercentage -Average).Average;"$c $($o.FreePhysicalMemory)"',
 ]
 
+// The words shown, in English or Japanese. With the language option on auto they follow
+// Claude Code's own language setting ("japanese" and the like), else English.
+const MESSAGES = {
+  en: {
+    level: { ok: 'calm', tight: 'tight', over: 'choked' } as Record<Level, string>,
+    chats: (n: number) => `${n} chat${n === 1 ? '' : 's'}`,
+    line: (chats: string, busy: number, cpu: number, free: number, lv: string, tail: string) => `${chats} (${busy} busy) · CPU ${cpu}% · ${free} GB free · ${lv}, ${tail}`,
+    more: (n: number) => `room for ${n} more`,
+    noMore: 'add no more',
+    oneByOne: 'heavy work one at a time',
+    toastOver: (cpu: number, free: number) => `This PC is choked (CPU ${cpu}%, ${free} GB free). Heavy work now runs one at a time. Start new chats on claude.ai/code`,
+    toastTight: (cpu: number, free: number) => `This PC is getting tight (CPU ${cpu}%, ${free} GB free). Do not add more chats`,
+    deny: (lv: string, cpu: number, free: number, heavy: number, after: number) =>
+      `parallel-pacer: this PC is ${lv} (CPU ${cpu}%, ${free} GB free, ${heavy} heavy run(s) in other chats). ` +
+      'Put this heavy command off, go on with other work first, and run the same command again in 1 to 2 minutes. ' +
+      `After ${after} holds it is let through.`,
+    note: (lv: string, cpu: number, free: number) =>
+      `[parallel-pacer] This PC is ${lv} (CPU ${cpu}%, ${free} GB free). ` +
+      'Run npm install, builds, tests, type checks and dev servers only as needed and one at a time, and stop a dev server once done. ' +
+      'One subagent at a time, and no Workflow. Keep the whole request; make the way of doing it lighter. The user does not see this note.',
+    cmdDesc: 'The parallel state (CPU, free memory, chats, heavy work). /para off stops the pacing, /para on brings it back',
+    on: 'Pacing is back on',
+    off: 'Pacing stopped (the status line goes too)',
+    heavyLine: (others: number, own: number) => `Heavy work: ${others} in other chats, ${own} in this one`,
+    rule: (t: typeof TIGHT, o: typeof OVER) => `Rule: tight = under ${t.freeGb} GB free or CPU ${t.cpu}%+ / choked = under ${o.freeGb} GB free or CPU ${o.cpu}%+`,
+    pacing: (on: boolean) => `Pacing: ${on ? 'on' : 'off (/para on brings it back)'}`,
+  },
+  ja: {
+    level: { ok: '余裕', tight: '詰まり気味', over: '詰まり' } as Record<Level, string>,
+    chats: (n: number) => `並列 ${n}本`,
+    line: (chats: string, busy: number, cpu: number, free: number, lv: string, tail: string) => `${chats}(動作${busy}) · CPU ${cpu}% · 空き ${free}GB · ${lv} ${tail}`,
+    more: (n: number) => `あと${n}本可`,
+    noMore: '増やさない',
+    oneByOne: '重い処理は1本ずつ',
+    toastOver: (cpu: number, free: number) => `PC が詰まっています（CPU ${cpu}%・空き ${free}GB）。重い処理を1本ずつに絞ります。新しい会話は claude.ai/code へ`,
+    toastTight: (cpu: number, free: number) => `PC が詰まり気味です（CPU ${cpu}%・空き ${free}GB）。これ以上会話を増やさないでください`,
+    deny: (lv: string, cpu: number, free: number, heavy: number, after: number) =>
+      `parallel-pacer: この PC が${lv}です（CPU ${cpu}%・空き ${free}GB・他の会話で重い処理 ${heavy} 本）。` +
+      'この重い処理は後回しにして、先に他の作業を進め、1〜2 分後に同じコマンドを再実行してください。' +
+      `${after} 回止められた後は通します。`,
+    note: (lv: string, cpu: number, free: number) =>
+      `[parallel-pacer] この PC が${lv}です（CPU ${cpu}%・空き ${free}GB）。` +
+      'npm install・ビルド・テスト・型チェック・dev server は必要な物だけを 1 本ずつ走らせ、終わった dev server は止めてください。' +
+      'サブエージェントは 1 体ずつ、Workflow は使わないでください。依頼の範囲は削らず、やり方を軽くしてください。このメモはユーザーには見えていません。',
+    cmdDesc: '並列の状態（CPU・空きメモリ・会話数・重い処理）を見る。/para off で調整を止め、/para on で戻す',
+    on: '並列の調整を戻しました',
+    off: '並列の調整を止めました（表示も消します）',
+    heavyLine: (others: number, own: number) => `重い処理: 他の会話 ${others} 本・この会話 ${own} 本`,
+    rule: (t: typeof TIGHT, o: typeof OVER) => `基準: 詰まり気味 = 空き ${t.freeGb}GB 未満か CPU ${t.cpu}% 以上 / 詰まり = 空き ${o.freeGb}GB 未満か CPU ${o.cpu}% 以上`,
+    pacing: (on: boolean) => `調整: ${on ? 'オン' : 'オフ（/para on で戻す）'}`,
+  },
+}
+let M = MESSAGES.en
+// "japanese", "日本語", "ja-JP" → Japanese; anything else → English
+const pickLang = (option: unknown, setting: unknown): 'en' | 'ja' => {
+  const v = typeof option === 'string' && option !== 'auto' ? option : setting
+  return typeof v === 'string' && /^(ja\b|ja[-_]|japanese|日本)/i.test(v.trim()) ? 'ja' : 'en'
+}
+
 let sid = ''
 let lastLevel: Level | null = null
 const denied: number[] = []
@@ -87,14 +146,12 @@ async function scan($: any, at: number) {
   return { chats, busy, heavy }
 }
 
-const LABEL: Record<Level, string> = { ok: '余裕', tight: '詰まり気味', over: '詰まり' }
-
 function line(l: Load | undefined, chats: number, busy: number): string {
-  if (!l) return `並列 ${chats}本`
+  if (!l) return M.chats(chats)
   const lv = level(l)
   const more = room(l)
-  const tail = lv === 'ok' ? (more > 0 ? `あと${more}本可` : '増やさない') : '重い処理は1本ずつ'
-  return `並列 ${chats}本(動作${busy}) · CPU ${l.cpu}% · 空き ${l.freeGb}GB · ${LABEL[lv]} ${tail}`
+  const tail = lv === 'ok' ? (more > 0 ? M.more(more) : M.noMore) : M.oneByOne
+  return M.line(M.chats(chats), busy, l.cpu, l.freeGb, M.level[lv], tail)
 }
 
 async function beat($: any, busy?: boolean) {
@@ -111,9 +168,7 @@ async function beat($: any, busy?: boolean) {
   const lv = level(l)
   if (lastLevel !== null && lv !== lastLevel && lv !== 'ok')
     $.ui.toast(
-      lv === 'over'
-        ? `PC が詰まっています（CPU ${l!.cpu}%・空き ${l!.freeGb}GB）。重い処理を1本ずつに絞ります。新しい会話は claude.ai/code へ`
-        : `PC が詰まり気味です（CPU ${l!.cpu}%・空き ${l!.freeGb}GB）。これ以上会話を増やさないでください`,
+      lv === 'over' ? M.toastOver(l!.cpu, l!.freeGb) : M.toastTight(l!.cpu, l!.freeGb),
     )
   lastLevel = lv
 }
@@ -131,10 +186,7 @@ async function gate($: any, e: any, next: any) {
   if (heavy.length >= limit && denied.length < PASS_AFTER) {
     denied.push(at)
     return {
-      deny:
-        `parallel-pacer: この PC が${LABEL[lv]}です（CPU ${l!.cpu}%・空き ${l!.freeGb}GB・他の会話で重い処理 ${heavy.length} 本）。` +
-        'この重い処理は後回しにして、先に他の作業を進め、1〜2 分後に同じコマンドを再実行してください。' +
-        `${PASS_AFTER} 回止められた後は通します。`,
+      deny: M.deny(M.level[lv], l!.cpu, l!.freeGb, heavy.length, PASS_AFTER),
     }
   }
   const key = `h:${sid}:${e.tool_use_id ?? at}`
@@ -147,11 +199,13 @@ async function gate($: any, e: any, next: any) {
   }
 }
 
-export function register(on: any) {
+export function register(on: any, options: { language?: string } = {}) {
   on('session.start', async ($: any, e: any, next: any) => {
     const started = await next(e)
+    const settings = await $.settings.read().catch(() => ({}))
+    M = MESSAGES[pickLang(options.language, settings?.language)]
     sid = await $.session.id()
-    await $.command.register({ name: 'para', description: '並列の状態（CPU・空きメモリ・会話数・重い処理）を見る。/para off で調整を止め、/para on で戻す' })
+    await $.command.register({ name: 'para', description: M.cmdDesc })
     await beat($, false)
     $.clock.every(BEAT_MS, () => beat($))
     return started
@@ -180,10 +234,7 @@ export function register(on: any) {
     const l = (await $.store.get('load')) as Load | undefined
     const lv = level(l)
     if (lv === 'ok') return next(e)
-    const note =
-      `[parallel-pacer] この PC が${LABEL[lv]}です（CPU ${l!.cpu}%・空き ${l!.freeGb}GB）。` +
-      'npm install・ビルド・テスト・型チェック・dev server は必要な物だけを 1 本ずつ走らせ、終わった dev server は止めてください。' +
-      'サブエージェントは 1 体ずつ、Workflow は使わないでください。依頼の範囲は削らず、やり方を軽くしてください。このメモはユーザーには見えていません。'
+    const note = M.note(M.level[lv], l!.cpu, l!.freeGb)
     return next({ ...e, context: [...(e.context ?? []), note] })
   })
 
@@ -195,7 +246,7 @@ export function register(on: any) {
     if (arg === 'off' || arg === 'on') {
       await $.store.set('manage', arg === 'on')
       await beat($)
-      return { text: arg === 'on' ? '並列の調整を戻しました' : '並列の調整を止めました（表示も消します）' }
+      return { text: arg === 'on' ? M.on : M.off }
     }
     const at = await $.clock.now()
     const l = await sample($, at)
@@ -205,10 +256,10 @@ export function register(on: any) {
     return {
       text: [
         line(l, s.chats, s.busy),
-        `重い処理: 他の会話 ${s.heavy.length} 本・この会話 ${own} 本`,
+        M.heavyLine(s.heavy.length, own),
         ...heavy.map((c) => `  - ${c}`),
-        `基準: 詰まり気味 = 空き ${TIGHT.freeGb}GB 未満か CPU ${TIGHT.cpu}% 以上 / 詰まり = 空き ${OVER.freeGb}GB 未満か CPU ${OVER.cpu}% 以上`,
-        `調整: ${(await $.store.get('manage')) === false ? 'オフ（/para on で戻す）' : 'オン'}`,
+        M.rule(TIGHT, OVER),
+        M.pacing((await $.store.get('manage')) !== false),
       ].join('\n'),
     }
   })

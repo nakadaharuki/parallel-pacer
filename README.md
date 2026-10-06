@@ -1,49 +1,48 @@
 # parallel-pacer
 
-Claude Code の会話を何本も並べて回すと、`npm install` やビルドやテストが重なって PC が固まります。この Mod は、PC の CPU と空きメモリ、いま動いている会話の数を見て、**重い処理の同時実行を自動で絞り**、ステータス行に「あと何本並べられるか」を出します。
+Run several Claude Code chats side by side and their `npm install`s, builds and tests pile up until the PC freezes. This mod watches the PC's CPU, free memory and the chats running on it, **holds heavy commands back to one at a time while the PC is choked**, and says in the status line how many more chats fit.
 
 ```
-並列 3本(動作2) · CPU 62% · 空き 4.1GB · 余裕 あと2本可
+3 chats (2 busy) · CPU 62% · 4.1 GB free · calm, room for 2 more
 ```
 
-Windows 用です（計測に PowerShell の `Get-CimInstance` を使います）。
+For Windows (it measures with PowerShell's `Get-CimInstance`). English and Japanese: the `language` option (`auto`, `en`, `ja`) follows Claude Code's `language` setting on `auto`.
 
-## 何をするか
+## What it does
 
-- **ステータス行**: 並列の会話数・CPU・空きメモリ・あと何本いけるか
-- **重い処理の順番待ち**: PC が詰まっている間、他の会話で重い処理（install・build・test・typecheck・dev server など）が走っていれば、新しい重い処理を止めて「1〜2 分後にもう一度」と Claude に返す。10 分のうち 3 回止めたら、その後は通す（止めっぱなしにしない）
-- **Claude へのメモ**: 詰まっている間だけ、「重い処理は 1 本ずつ」というメモをプロンプトに添える（依頼の範囲は削らせない）
-- **トースト**: 詰まり気味・詰まりに変わった時に 1 回知らせる
-- `/para`: 今の状態と基準を見る。`/para off` で調整を止め、`/para on` で戻す
+- **Status line**: chats in parallel, CPU, free memory, and how many more chats fit
+- **Heavy work waits its turn**: while the PC is choked and another chat runs heavy work (install, build, test, typecheck, dev server…), a new heavy command is held back and Claude is told to run it again in 1 to 2 minutes. After 3 holds within 10 minutes it is let through, so nothing is stuck for good
+- **A note for Claude**: only while the PC is choked, a note asks Claude to run heavy work one at a time (without cutting the request)
+- **Toast**: once, when the PC turns tight or choked
+- `/para`: the state and the rule. `/para off` stops the pacing, `/para on` brings it back
 
-基準は 16GB のノート PC に合わせてあります（詰まり気味 = 空き 3.5GB 未満か CPU 75% 以上・詰まり = 空き 2GB 未満か CPU 90% 以上）。[hooks/register.tsx](hooks/register.tsx) の頭の定数で変えられます。
+The thresholds suit a 16 GB laptop (tight = under 3.5 GB free or CPU 75%+, choked = under 2 GB free or CPU 90%+). Change them in the constants at the top of [hooks/register.tsx](hooks/register.tsx).
 
-## 入れる
+## Install
 
 ```
 /plugin marketplace add nakadaharuki/parallel-pacer
 /plugin install parallel-pacer@parallel-pacer
 ```
 
-Claude Code v2.1.287 以上。
+Claude Code v2.1.287 or later. It is also listed, pinned to a read commit with a manifest, at [modscode.com/mods/parallel-pacer](https://modscode.com/mods/parallel-pacer/).
 
-## 中で使っている物
+## What it touches
 
-Mods は隔離されずに動くので、入れる前に読めるよう書いておきます。コードは [hooks/register.tsx](hooks/register.tsx) の 1 本（約 215 行）だけです。
+Mods are not sandboxed, so here it is before you install. The code is one file, [hooks/register.tsx](hooks/register.tsx).
 
-- 通信しません（`$.http` を使わない）。環境変数・ファイルも読みません
-- 外のプロセスは、30 秒に 1 回の計測（`powershell -NoProfile -Command "Get-CimInstance ..."`）だけ。会話が何本あっても、計測は PC で 1 本です（`$.store` で順番を取る）
-- `$.store` に置くのは、計測値・会話の生存の印・走っている重いコマンドの種類（`npm install` など。引数は残さない）
-- `Bash`・`PowerShell` の `tool.call` を見て、重いコマンドだけを止めることがあります
+- No network (`$.http` is not used). No environment variables, no files
+- One outside process: a reading every 30 seconds (`powershell -NoProfile -Command "Get-CimInstance ..."`). However many chats run, the PC takes one reading (they take turns through `$.store`)
+- `$.store` holds the reading, a heartbeat per chat, and the kind of heavy command running (`npm install` and the like, never its arguments)
+- It reads Claude Code's `language` setting to pick the language
+- It watches `Bash` and `PowerShell` tool calls and may hold back heavy commands
 
-## 仕組みのメモ
+## How it works
 
-Mod はセッションの数だけ別のプロセスで動きます。なので「PC 全体で 1 つ」の物（計測・重い処理の数）は、モジュールの変数ではなく `$.store` に置き、全部の会話が同じ値を読みます。生存の印が 60 秒途絶えた会話は、いない物として数えません。
+A mod runs once per session, in a process of its own. So what is one per PC (the reading, the count of heavy work) lives in `$.store`, which every chat reads, not in module variables. A chat whose heartbeat stops for 60 seconds is no longer counted.
 
-## 関連
+## 日本語
 
-成分表（何に触れるか）と、版を固定した入れ方は [modscode.com/mods/parallel-pacer](https://modscode.com/mods/parallel-pacer/) にあります。
-
-デスクトップ版の Mods で踏んだ罠は Zenn に書いています: https://zenn.dev/nakadaharuki
+PC の CPU・空きメモリと並列の会話数を見て、詰まっている間は重い処理（install・build・test など）を 1 本ずつに絞り、ステータス行に「あと何本並べられるか」を出します。表示は日本語にもなります（`language` の設定が `auto` なら Claude Code の `language` 設定に合わせる）。成分表と入れ方は [modscode.com/ja/mods/parallel-pacer](https://modscode.com/ja/mods/parallel-pacer/)。デスクトップ版の Mods で踏んだ罠は Zenn に: https://zenn.dev/nakadaharuki
 
 MIT License
