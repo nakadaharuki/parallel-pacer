@@ -45,4 +45,4 @@ A mod runs once per session, in a process of its own. So what is one per PC (the
 
 PC の CPU・空きメモリと並列の会話数を見て、詰まっている間は重い処理（install・build・test など）を 1 本ずつに絞り、ステータス行に「あと何本並べられるか」を出します。表示は日本語にもなります（`language` の設定が `auto` なら Claude Code の `language` 設定に合わせる）。成分表と入れ方は [modscode.com/ja/mods/parallel-pacer](https://modscode.com/ja/mods/parallel-pacer/)。デスクトップ版の Mods で踏んだ罠は Zenn に: https://zenn.dev/nakadaharuki
 
-MIT License
+All rights reserved（著作権は nakadadev。読むことと Claude Code に入れて使うことはできますが、複製・改変・再配布は許可していません）
